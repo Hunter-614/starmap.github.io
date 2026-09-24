@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Local Star Map & ISS Observatory | ESA Gaia DR3</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="bg-slate-950 text-slate-100 flex flex-col h-screen w-screen overflow-hidden">
+
+  <!-- TOP APP BAR -->
+  <header class="glass-panel px-4 py-2.5 flex items-center justify-between z-30 border-b border-sky-500/20 shadow-lg">
+    <!-- Brand / Title -->
+    <div class="flex items-center space-x-3">
+      <div class="w-9 h-9 rounded-lg bg-sky-500/20 border border-sky-400/40 flex items-center justify-center text-sky-400 font-bold text-lg shadow-inner">
+        ✨
+      </div>
+      <div>
+        <div class="flex items-center space-x-2">
+          <h1 class="text-sm font-bold tracking-wide text-white">LOCAL STAR MAP &amp; ISS OBSERVATORY</h1>
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/30">ESA Gaia DR3</span>
+        </div>
+        <p class="text-[11px] text-slate-400">Live Topocentric Sky Lore • Constellations • Planetary Ephemeris • ISS Orbit</p>
+      </div>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="relative w-64 max-md:hidden">
+      <div class="relative">
+        <input id="search-object-input" type="text" placeholder="Search star, planet, ISS, constellation..." 
+               class="w-full bg-slate-900/90 text-xs px-3 py-1.5 pl-8 rounded-lg border border-slate-700 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-400">
+        <svg class="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+      </div>
+      <div id="search-results-dropdown" class="absolute left-0 right-0 top-9 bg-slate-900 border border-slate-700 rounded-lg shadow-xl overflow-hidden z-50 hidden divide-y divide-slate-800">
+      </div>
+    </div>
+
+    <!-- Location Search Bar -->
+    <div class="relative w-64 max-lg:w-52">
+      <div class="relative flex items-center bg-slate-900/90 border border-slate-700 rounded-lg focus-within:border-sky-400 focus-within:ring-1 focus-within:ring-sky-400/30 transition-all shadow-sm">
+        <span class="text-slate-400 pl-2.5 pr-1.5 text-xs select-none">📍</span>
+        <input id="location-search-input" type="text" placeholder="Search city or location..." autocomplete="off"
+               class="w-full bg-transparent text-xs py-1.5 text-slate-200 placeholder-slate-500 focus:outline-none pr-14 font-medium">
+        
+        <!-- Clear input button -->
+        <button id="btn-clear-location-search" title="Clear location search" class="hidden text-slate-500 hover:text-slate-300 px-1 text-xs transition-colors">
+          ✕
+        </button>
+
+        <!-- Use My Location GPS button -->
+        <button id="btn-geolocate" title="Use My Current GPS Location" class="px-2 py-1 text-sky-400 hover:text-sky-300 transition-colors border-l border-slate-800 flex items-center">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 11c0 1.105-.895 2-2 2s-2-.895-2-2 .895-2 2-2 2 .895 2 2zM12 2a10 10 0 100 20 10 10 0 000-20z"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Autocomplete Dropdown -->
+      <div id="location-results-dropdown" class="absolute left-0 right-0 top-9 bg-slate-900/95 backdrop-blur-md border border-slate-700 rounded-lg shadow-2xl overflow-hidden z-50 hidden max-h-80 overflow-y-auto divide-y divide-slate-800/80">
+      </div>
+    </div>
+
+      <!-- Night Vision Toggle -->
+      <button id="btn-night-vision" title="Toggle Astronomy Red Light Vision Mode" 
+              class="px-2.5 py-1 text-xs font-medium rounded-lg border border-red-500/40 bg-red-950/40 text-red-400 hover:bg-red-900/40 transition-colors flex items-center space-x-1">
+        <span>🔴</span>
+        <span class="max-sm:hidden">Red Light</span>
+      </button>
+
+      <!-- Reset View -->
+      <button id="btn-reset-view" title="Reset Sky View & Zoom" 
+              class="px-2.5 py-1 text-xs font-medium rounded-lg border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800 transition-colors">
+        Reset Dome
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN OBSERVATORY WORKSPACE -->
+  <div class="relative flex-1 w-full h-full overflow-hidden flex">
+
+    <!-- LEFT FLOATING DRAWER: Controls & Gaia TAP Query Console -->
+    <aside class="absolute left-4 top-4 bottom-20 w-80 glass-panel rounded-xl flex flex-col z-20 shadow-2xl transition-all border border-slate-800 overflow-hidden">
+      <!-- Tabs Header -->
+      <div class="flex border-b border-slate-800 bg-slate-900/60 text-xs font-medium">
+        <button id="tab-btn-layers" class="flex-1 py-2 text-center text-sky-400 border-b-2 border-sky-400 font-semibold" onclick="switchTab('layers')">
+          🔭 Sky Layers
+        </button>
+        <button id="tab-btn-gaia" class="flex-1 py-2 text-center text-slate-400 hover:text-slate-200" onclick="switchTab('gaia')">
+          🛰️ ESA Gaia TAP
+        </button>
+        <button id="tab-btn-observer" class="flex-1 py-2 text-center text-slate-400 hover:text-slate-200" onclick="switchTab('observer')">
+          🌐 Coordinates
+        </button>
+      </div>
+
+      <!-- TAB 1: Sky Layers -->
+      <div id="tab-content-layers" class="flex-1 overflow-y-auto p-4 space-y-4">
+        <!-- View Mode Switch -->
+        <div>
+          <label class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Projection Mode</label>
+          <select id="projection-mode-select" class="w-full bg-slate-900 border border-slate-700 rounded-lg text-xs p-2 text-slate-200 focus:outline-none focus:border-sky-400">
+            <option value="planisphere">All-Sky Planisphere Dome (360° Fisheye)</option>
+            <option value="panorama">Virtual Horizon Panorama (First-Person)</option>
+          </select>
+        </div>
+
+        <!-- Toggles Group -->
+        <div class="space-y-2 text-xs">
+          <label class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block pt-1">Celestial Layers</label>
+          
+          <label class="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-800/40 cursor-pointer">
+            <span class="text-slate-300">Constellation Lines</span>
+            <input id="toggle-constellation-lines" type="checkbox" checked class="rounded bg-slate-900 border-slate-700 text-sky-500 focus:ring-0">
+          </label>
+
+          <label class="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-800/40 cursor-pointer">
+            <span class="text-slate-300">Constellation Names</span>
+            <input id="toggle-constellation-labels" type="checkbox" checked class="rounded bg-slate-900 border-slate-700 text-sky-500 focus:ring-0">
+          </label>
+
+          <label class="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-800/40 cursor-pointer">
+            <span class="text-slate-300">Named Bright Stars</span>
+            <input id="toggle-star-names" type="checkbox" checked class="rounded bg-slate-900 border-slate-700 text-sky-500 focus:ring-0">
+          </label>
+
+          <label class="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-800/40 cursor-pointer">
+            <span class="text-slate-300">Solar System Planets &amp; Moon</span>
+            <input id="toggle-planets" type="checkbox" checked class="rounded bg-slate-900 border-slate-700 text-sky-500 focus:ring-0">
+          </label>
+
+          <label class="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-800/40 cursor-pointer">
+            <span class="text-slate-300">Alt/Az Coordinate Grid</span>
+            <input id="toggle-altaz-grid" type="checkbox" checked class="rounded bg-slate-900 border-slate-700 text-sky-500 focus:ring-0">
+          </label>
+
+          <label class="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-800/40 cursor-pointer">
+            <span class="text-slate-300">Atmosphere &amp; Daylight Glow</span>
+            <input id="toggle-atmosphere" type="checkbox" checked class="rounded bg-slate-900 border-slate-700 text-sky-500 focus:ring-0">
+          </label>
+
+          <label class="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-800/40 cursor-pointer">
+            <span class="text-slate-300">ISS Orbital Sky Trail</span>
+            <input id="toggle-iss-trail" type="checkbox" checked class="rounded bg-slate-900 border-slate-700 text-sky-500 focus:ring-0">
+          </label>
+
+          <label class="flex items-center justify-between py-1 px-2 rounded hover:bg-slate-800/40 cursor-pointer">
+            <span class="text-slate-300">Atmospheric Star Twinkle</span>
+            <input id="toggle-twinkle" type="checkbox" checked class="rounded bg-slate-900 border-slate-700 text-sky-500 focus:ring-0">
+          </label>
+        </div>
+
+        <!-- Database Metrics -->
+        <div class="pt-3 border-t border-slate-800 text-[11px] text-slate-400 space-y-1">
+          <div class="flex justify-between">
+            <span>ESA Gaia DR3 Stars:</span>
+            <span id="stat-stars-count" class="text-sky-300 font-mono">3,880</span>
+          </div>
+          <div class="flex justify-between">
+            <span>IAU Constellations:</span>
+            <span id="stat-con-count" class="text-sky-300 font-mono">20</span>
+          </div>
+          <div class="flex justify-between">
+            <span>Current Solar Phase:</span>
+            <span id="sun-phase-badge" class="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-slate-800 text-slate-300">Night</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: ESA Gaia TAP Archive Live Query -->
+      <div id="tab-content-gaia" class="flex-1 overflow-y-auto p-4 space-y-3 hidden">
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">ADQL Query Presets</label>
+            <span class="text-[10px] text-emerald-400 font-mono">gea.esac.esa.int</span>
+          </div>
+          <select id="gaia-preset-select" class="w-full bg-slate-900 border border-slate-700 rounded-lg text-xs p-1.5 text-slate-200 focus:outline-none focus:border-sky-400">
+            <option value="zenith">Local Zenith Cone (Current Sky Overhead)</option>
+            <option value="pleiades">Pleiades Cluster M45 (Seven Sisters)</option>
+            <option value="orion_belt">Orion Belt Field (Alnitak/Alnilam)</option>
+            <option value="brightest_100">Top 100 Brightest Stars (G ≤ 4.0)</option>
+            <option value="polaris">Polaris North Star Cone</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">ADQL Editor</label>
+          <textarea id="gaia-adql-input" rows="5" class="w-full bg-slate-950 font-mono text-[11px] p-2 rounded-lg border border-slate-700 text-sky-300 focus:outline-none focus:border-sky-400 resize-none">SELECT TOP 100 
+    source_id, ra, dec, phot_g_mean_mag, bp_rp, parallax 
+FROM gaiadr3.gaia_source 
+WHERE phot_g_mean_mag <= 4.0
+ORDER BY phot_g_mean_mag ASC</textarea>
+        </div>
+
+        <div class="flex space-x-2">
+          <button id="btn-run-gaia" class="flex-1 bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs py-1.5 px-3 rounded-lg shadow transition-all flex items-center justify-center space-x-1">
+            <span>⚡</span>
+            <span>Execute TAP Query</span>
+          </button>
+          <button id="btn-clear-gaia" class="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs py-1.5 px-3 rounded-lg transition-all">
+            Clear
+          </button>
+        </div>
+
+        <div id="gaia-query-status" class="text-[11px]">
+          <span class="text-slate-400">ℹ️ Ready to query ESA Gaia archive.</span>
+        </div>
+
+        <!-- Query Results Container -->
+        <div id="gaia-query-results" class="pt-1">
+          <div class="text-xs text-slate-500 py-3 text-center">Execute query to view stars and highlight on map.</div>
+        </div>
+      </div>
+
+      <!-- TAB 3: Observer Coordinates -->
+      <div id="tab-content-observer" class="flex-1 overflow-y-auto p-4 space-y-4 hidden text-xs">
+        <div>
+          <label class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Latitude (° North)</label>
+          <input id="obs-lat-input" type="number" step="0.0001" min="-90" max="90" value="40.7128" 
+                 class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200 font-mono focus:outline-none focus:border-sky-400">
+        </div>
+
+        <div>
+          <label class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Longitude (° East)</label>
+          <input id="obs-lon-input" type="number" step="0.0001" min="-180" max="180" value="-74.0060" 
+                 class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200 font-mono focus:outline-none focus:border-sky-400">
+        </div>
+
+        <div class="p-3 bg-slate-900/60 border border-slate-800 rounded-lg space-y-1.5 text-[11px] text-slate-300">
+          <div class="font-semibold text-sky-400">Astronomical Coordinate Math</div>
+          <p class="text-slate-400">Equatorial coordinates $(\alpha, \delta)$ are converted to local topocentric horizon coordinates $(h, A)$ via Local Sidereal Time:</p>
+          <div class="font-mono text-[10px] bg-slate-950 p-2 rounded text-sky-300 border border-slate-800">
+            LST = GMST + Longitude / 15<br>
+            HA = LST - RA<br>
+            sin(h) = sin(δ)sin(φ) + cos(δ)cos(φ)cos(HA)
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- CENTER PLANETARIUM CANVAS -->
+    <main class="flex-1 h-full w-full relative">
+      <canvas id="skymap-canvas" class="w-full h-full block cursor-default"></canvas>
+
+      <!-- On-Canvas HUD Badges -->
+      <div class="absolute left-88 top-4 pointer-events-none space-y-1 text-xs">
+        <div id="hud-location-name" class="font-bold text-white text-sm tracking-wide drop-shadow">New York, USA</div>
+        <div class="flex items-center space-x-2 text-[11px] text-slate-400 font-mono">
+          <span id="clock-local-time">--:--:--</span>
+          <span>•</span>
+          <span id="clock-utc-time">--:--:-- UTC</span>
+          <span>•</span>
+          <span id="clock-lst-time" class="text-sky-400">LST --h --m</span>
+        </div>
+      </div>
+
+      <!-- Canvas Navigation Instructions Tooltip -->
+      <div class="absolute left-88 bottom-24 pointer-events-none text-[10px] text-slate-500 font-mono flex items-center space-x-3">
+        <span>🖱️ Drag: Pan dome</span>
+        <span>•</span>
+        <span>📜 Scroll: Zoom FOV</span>
+        <span>•</span>
+        <span>🎯 Click: Inspect Star / Planet / ISS</span>
+      </div>
+    </main>
+
+    <!-- RIGHT FLOATING DRAWER: ISS Live Radar & Mission Control -->
+    <aside class="absolute right-4 top-4 w-76 glass-panel rounded-xl p-3.5 z-20 shadow-2xl border border-slate-800 space-y-3">
+      <!-- ISS Header & Status -->
+      <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+        <div class="flex items-center space-x-2">
+          <span class="text-lg">🛰️</span>
+          <div>
+            <h2 class="text-xs font-bold text-white tracking-wide">ISS TELEMETRY</h2>
+            <div class="text-[10px] text-slate-400">Zvezda / Destiny Orbit</div>
+          </div>
+        </div>
+        <div id="iss-status-badge" class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700">
+          ● INITIALIZING
+        </div>
+      </div>
+
+      <!-- Mini Earth Ground Track Radar Canvas -->
+      <div class="relative rounded-lg overflow-hidden border border-slate-700 bg-slate-950">
+        <canvas id="iss-radar-canvas" class="w-full h-36 block"></canvas>
+        <div class="absolute bottom-1 right-1.5 text-[9px] text-slate-500 font-mono">Ground Track Radar</div>
+      </div>
+
+      <!-- Topocentric Live Stats for Observer -->
+      <div class="grid grid-cols-2 gap-2 text-xs font-mono">
+        <div class="p-2 rounded bg-slate-900/70 border border-slate-800">
+          <div class="text-[10px] text-slate-400 uppercase">Local Elevation</div>
+          <div id="iss-hud-alt" class="text-sm font-bold text-amber-400">--°</div>
+        </div>
+        <div class="p-2 rounded bg-slate-900/70 border border-slate-800">
+          <div class="text-[10px] text-slate-400 uppercase">Azimuth Bearing</div>
+          <div id="iss-hud-az" class="text-sm font-bold text-sky-400">--°</div>
+        </div>
+        <div class="p-2 rounded bg-slate-900/70 border border-slate-800">
+          <div class="text-[10px] text-slate-400 uppercase">Slant Distance</div>
+          <div id="iss-hud-dist" class="text-xs font-semibold text-slate-200">-- km</div>
+        </div>
+        <div class="p-2 rounded bg-slate-900/70 border border-slate-800">
+          <div class="text-[10px] text-slate-400 uppercase">Orbital Speed</div>
+          <div id="iss-hud-speed" class="text-xs font-semibold text-slate-200">27,600 km/h</div>
+        </div>
+      </div>
+
+      <!-- Sub-satellite coordinates -->
+      <div class="text-[11px] text-slate-400 flex justify-between px-1">
+        <span>Sub-Satellite Lat/Lon:</span>
+        <span id="iss-hud-latlon" class="text-slate-300 font-mono">--°, --°</span>
+      </div>
+
+      <!-- Upcoming Pass Prediction Card -->
+      <div id="iss-pass-summary" class="p-2.5 rounded-lg bg-sky-950/40 border border-sky-500/30 text-xs">
+        <div class="text-slate-400 text-[11px]">Computing next pass above horizon...</div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- BOTTOM TIME WARP & PLAYBACK BAR -->
+  <footer class="glass-panel px-4 py-2.5 flex items-center justify-between z-30 border-t border-sky-500/20 shadow-lg space-x-4">
+    <!-- Play / Pause & Speed Multiplier -->
+    <div class="flex items-center space-x-2">
+      <button id="btn-play-pause" class="bg-sky-600 hover:bg-sky-500 text-white font-semibold text-xs py-1.5 px-3 rounded-lg shadow transition-all flex items-center space-x-1.5">
+        <svg class="w-4 h-4 text-emerald-300" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        <span>Play</span>
+      </button>
+
+      <select id="time-speed-select" class="bg-slate-900 border border-slate-700 text-xs text-slate-200 rounded-lg p-1.5 focus:outline-none">
+        <option value="1">1x (Real-time)</option>
+        <option value="60">60x (1 min/sec)</option>
+        <option value="300" selected>300x (5 min/sec)</option>
+        <option value="1800">1800x (30 min/sec)</option>
+        <option value="7200">7200x (2 hr/sec)</option>
+      </select>
+    </div>
+
+    <!-- 24-Hour Time Scrubber Slider -->
+    <div class="flex-1 flex items-center space-x-3 max-w-2xl">
+      <span class="text-[10px] text-slate-500 font-mono">00:00</span>
+      <input id="time-scrub-slider" type="range" min="0" max="1439" step="1" value="720" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+      <span class="text-[10px] text-slate-500 font-mono">23:59</span>
+    </div>
+
+    <!-- Quick Jump Buttons & Date Picker -->
+    <div class="flex items-center space-x-2 text-xs">
+      <input id="date-picker-input" type="date" class="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1 focus:outline-none">
+      
+      <button id="btn-time-now" class="px-2.5 py-1 rounded bg-slate-900 border border-slate-700 hover:bg-slate-800 text-slate-300 transition-colors">
+        Now
+      </button>
+      <button id="btn-time-sunset" class="px-2.5 py-1 rounded bg-slate-900 border border-slate-700 hover:bg-slate-800 text-slate-300 transition-colors">
+        Sunset
+      </button>
+      <button id="btn-time-midnight" class="px-2.5 py-1 rounded bg-slate-900 border border-slate-700 hover:bg-slate-800 text-slate-300 transition-colors">
+        Midnight
+      </button>
+    </div>
+  </footer>
+
+  <!-- CELESTIAL OBJECT INSPECTOR MODAL -->
+  <div id="inspector-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="glass-panel w-full max-w-md rounded-2xl p-5 border border-sky-500/30 shadow-2xl relative space-y-4 animate-in fade-in zoom-in-95">
+      <!-- Header -->
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div>
+          <span id="inspect-type-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/40">
+            STAR
+          </span>
+          <h3 id="inspect-title" class="text-lg font-bold text-white mt-1">Sirius (Alpha Canis Majoris)</h3>
+        </div>
+        <button id="btn-close-inspector" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Properties Grid -->
+      <div class="grid grid-cols-2 gap-3 text-xs">
+        <div class="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800">
+          <div class="text-[10px] text-slate-400 uppercase">Apparent Magnitude</div>
+          <div id="inspect-mag" class="text-sm font-semibold text-amber-300">-1.46 (G-Band)</div>
+        </div>
+
+        <div class="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800">
+          <div class="text-[10px] text-slate-400 uppercase">Distance</div>
+          <div id="inspect-dist" class="text-sm font-semibold text-slate-200">8.6 Light-Years</div>
+        </div>
+
+        <div class="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800">
+          <div class="text-[10px] text-slate-400 uppercase">BP - RP Color Index</div>
+          <div id="inspect-color" class="text-xs font-mono text-sky-300">0.05 (Blue-White)</div>
+        </div>
+
+        <div class="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800">
+          <div class="text-[10px] text-slate-400 uppercase">Visibility</div>
+          <div id="inspect-visibility" class="text-xs font-semibold text-emerald-400">Above Horizon</div>
+        </div>
+      </div>
+
+      <!-- Coordinates Box -->
+      <div class="p-3 rounded-lg bg-slate-900/80 border border-slate-800 text-xs font-mono space-y-1">
+        <div class="flex justify-between text-slate-400">
+          <span>Equatorial (J2000):</span>
+          <span id="inspect-radec" class="text-slate-200">RA 101.29° | Dec -16.72°</span>
+        </div>
+        <div class="flex justify-between text-slate-400">
+          <span>Topocentric (Observer):</span>
+          <span id="inspect-altaz" class="text-sky-300 font-bold">Alt 42.1° | Az 178.4°</span>
+        </div>
+      </div>
+
+      <!-- ESA Gaia Archive Source ID -->
+      <div id="inspect-gaia-row" class="text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-800 pt-2 font-mono">
+        <span>Gaia DR3 ID:</span>
+        <span id="inspect-gaia-id" class="text-sky-400 select-all">2945897216264871296</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab Switch Script Helper -->
+  <script>
+    function switchTab(tabId) {
+      ['layers', 'gaia', 'observer'].forEach(t => {
+        const btn = document.getElementById(`tab-btn-${t}`);
+        const content = document.getElementById(`tab-content-${t}`);
+        if (t === tabId) {
+          btn.className = "flex-1 py-2 text-center text-sky-400 border-b-2 border-sky-400 font-semibold";
+          content.classList.remove('hidden');
+        } else {
+          btn.className = "flex-1 py-2 text-center text-slate-400 hover:text-slate-200";
+          content.classList.add('hidden');
+        }
+      });
+    }
+  </script>
+
+  <!-- SCRIPTS -->
+  <script src="/static/js/astronomy.js"></script>
+  <script src="/static/js/skymap.js"></script>
+  <script src="/static/js/iss.js"></script>
+  <script src="/static/js/gaia.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

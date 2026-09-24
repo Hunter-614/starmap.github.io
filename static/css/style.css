@@ -1,0 +1,111 @@
+/* Custom styles and glassmorphism for Local Star Map Observatory */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #030712;
+  color: #f3f4f6;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Glassmorphism panels */
+.glass-panel {
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+}
+
+.glass-panel-subtle {
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(56, 189, 248, 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(56, 189, 248, 0.6);
+}
+
+/* Sliders */
+input[type="range"] {
+  accent-color: #38bdf8;
+}
+
+/* Night Vision (Red Light) Mode */
+body.night-vision-active {
+  background-color: #0d0000 !important;
+  color: #ff6666 !important;
+}
+
+body.night-vision-active .glass-panel {
+  background: rgba(30, 0, 0, 0.85) !important;
+  border-color: rgba(239, 68, 68, 0.35) !important;
+}
+
+body.night-vision-active .glass-panel-subtle {
+  background: rgba(20, 0, 0, 0.65) !important;
+  border-color: rgba(239, 68, 68, 0.25) !important;
+}
+
+body.night-vision-active text,
+body.night-vision-active span,
+body.night-vision-active h1,
+body.night-vision-active h2,
+body.night-vision-active h3,
+body.night-vision-active p,
+body.night-vision-active div,
+body.night-vision-active label {
+  color: #ff6666 !important;
+}
+
+body.night-vision-active strong,
+body.night-vision-active th {
+  color: #ff8888 !important;
+}
+
+body.night-vision-active select,
+body.night-vision-active input,
+body.night-vision-active textarea {
+  background-color: #1a0000 !important;
+  color: #ff8888 !important;
+  border-color: #7f1d1d !important;
+}
+
+body.night-vision-active input[type="range"] {
+  accent-color: #ef4444 !important;
+}
+
+body.night-vision-active .border-slate-800,
+body.night-vision-active .border-slate-700 {
+  border-color: #450a0a !important;
+}
+
+/* Pulsing radar effect */
+@keyframes radar-pulse {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.08); opacity: 0.4; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+.animate-radar-pulse {
+  animation: radar-pulse 2s infinite ease-in-out;
+}
