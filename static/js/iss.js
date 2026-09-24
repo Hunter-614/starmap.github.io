@@ -54,23 +54,25 @@ class ISSTracker {
     if (this.isFetching) return;
     this.isFetching = true;
 
-    try {
-      // 1. Try local FastAPI backend endpoint
-      const resp = await fetch(`/api/iss?lat=${this.observerLat}&lon=${this.observerLon}`);
-      if (resp.ok) {
-        const data = await resp.json();
-        this.currentData = data;
-        this.renderRadar();
-        this.updateHUD();
-        if (this.onUpdateCallback) this.onUpdateCallback(data);
-        this.isFetching = false;
-        return;
-      }
-    } catch (e) {
-      // Backend not reached or running standalone
+    const isStaticHost = location.hostname.includes('github.io') || location.protocol === 'file:' || !location.port;
+
+    // 1. Try local FastAPI backend endpoint only if not on a pure static host
+    if (!isStaticHost) {
+      try {
+        const resp = await fetch(`/api/iss?lat=${this.observerLat}&lon=${this.observerLon}`);
+        if (resp.ok) {
+          const data = await resp.json();
+          this.currentData = data;
+          this.renderRadar();
+          this.updateHUD();
+          if (this.onUpdateCallback) this.onUpdateCallback(data);
+          this.isFetching = false;
+          return;
+        }
+      } catch (e) {}
     }
 
-    // 2. Standalone fallback directly to wheretheiss.at
+    // 2. Standalone fallback (GitHub Pages / pure client-side)
     try {
       const resp = await fetch("https://api.wheretheiss.at/v1/satellites/25544");
       if (resp.ok) {
@@ -78,8 +80,52 @@ class ISSTracker {
         const obsEcef = Astronomy.geodeticToEcef(this.observerLat, this.observerLon, 0);
         const satEcef = Astronomy.geodeticToEcef(live.latitude, live.longitude, live.altitude);
         const enu = Astronomy.ecefToEnu(satEcef.x, satEcef.y, satEcef.z, obsEcef.x, obsEcef.y, obsEcef.z, this.observerLat, this.observerLon);
-        
-        const syntheticData = {
+
+        // Compute 90-minute orbital track (ground path & local sky trajectory)
+        const groundTrack = [];
+        const skyTrajectory = [];
+        const t0 = live.timestamp;
+        const periodSec = 5560; // ~92.6 min orbital period
+        const incRad = 51.64 * (Math.PI / 180.0);
+
+        for (let i = -15; i <= 15; i++) {
+          const dt = i * 180;
+          const ptTs = t0 + dt;
+          const theta = ((t0 % periodSec + dt) / periodSec) * 2 * Math.PI;
+          const pLat = Math.asin(Math.sin(incRad) * Math.sin(theta)) * (180.0 / Math.PI);
+          let pLon = (live.longitude + (dt / periodSec) * 360.0 * Math.cos(incRad) - (dt / 240.0)) % 360.0;
+          if (pLon > 180) pLon -= 360;
+          if (pLon < -180) pLon += 360;
+
+          groundTrack.push({ lat: pLat, lon: pLon, ts: ptTs });
+
+          const pSatEcef = Astronomy.geodeticToEcef(pLat, pLon, live.altitude);
+          const pEnu = Astronomy.ecefToEnu(pSatEcef.x, pSatEcef.y, pSatEcef.z, obsEcef.x, obsEcef.y, obsEcef.z, this.observerLat, this.observerLon);
+          skyTrajectory.push({
+            az: pEnu.azimuth,
+            el: pEnu.elevation,
+            range_km: pEnu.slantRange,
+            is_above: pEnu.elevation > 0,
+            ts: ptTs
+          });
+        }
+
+        // Check for upcoming pass
+        let nextPass = null;
+        const passPts = skyTrajectory.filter(p => p.ts >= t0 && p.el > 0);
+        if (passPts.length > 0) {
+          const maxPt = passPts.reduce((prev, curr) => (curr.el > prev.el ? curr : prev), passPts[0]);
+          nextPass = {
+            status: enu.elevation > 0 ? "In Progress" : "Upcoming",
+            start_ts: passPts[0].ts,
+            max_elevation: maxPt.el,
+            max_azimuth: maxPt.az,
+            max_ts: maxPt.ts,
+            end_ts: passPts[passPts.length - 1].ts
+          };
+        }
+
+        const fullData = {
           telemetry: {
             name: "International Space Station (ISS)",
             norad_id: 25544,
@@ -97,14 +143,15 @@ class ISSTracker {
             is_above_horizon: enu.elevation > 0,
             direction: this.bearingToCompass(enu.azimuth)
           },
-          ground_track: [],
-          sky_trajectory: []
+          ground_track: groundTrack,
+          sky_trajectory: skyTrajectory,
+          next_pass: nextPass
         };
 
-        this.currentData = syntheticData;
+        this.currentData = fullData;
         this.renderRadar();
         this.updateHUD();
-        if (this.onUpdateCallback) this.onUpdateCallback(syntheticData);
+        if (this.onUpdateCallback) this.onUpdateCallback(fullData);
       }
     } catch (err) {
       console.warn("ISS live fetch failed:", err);

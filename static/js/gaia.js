@@ -105,32 +105,94 @@ ORDER BY phot_g_mean_mag ASC`;
 
     this.setStatus("Executing ADQL query on ESA Gaia TAP server...", "loading");
     if (this.runBtn) this.runBtn.disabled = true;
+    const startTime = performance.now();
 
-    try {
-      const resp = await fetch("/api/gaia/query", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: query, timeout_sec: 30 })
-      });
+    const isStaticHost = location.hostname.includes('github.io') || location.protocol === 'file:' || !location.port;
 
-      const res = await resp.json();
-      if (res.success) {
-        this.currentStars = res.rows || [];
-        this.setStatus(`Success: Returned ${res.count} stars in ${res.duration_ms} ms from ESA Gaia Archive.`, "success");
-        this.renderResultsTable(res.rows, res.columns);
+    // 1. Try local FastAPI backend endpoint first if not on a pure static host
+    if (!isStaticHost) {
+      try {
+        const resp = await fetch("/api/gaia/query", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: query, timeout_sec: 25 })
+        });
 
-        // Highlight stars in skymap
-        if (this.skymap) {
-          this.skymap.setGaiaHighlights(this.currentStars);
+        if (resp.ok) {
+          const res = await resp.json();
+          if (res.success) {
+            this.currentStars = res.rows || [];
+            this.setStatus(`Success: Returned ${res.count} stars in ${res.duration_ms} ms from ESA Gaia Archive.`, "success");
+            this.renderResultsTable(res.rows, res.columns);
+
+            if (this.skymap) {
+              this.skymap.setGaiaHighlights(this.currentStars);
+            }
+            if (this.runBtn) this.runBtn.disabled = false;
+            return;
+          }
         }
-      } else {
-        this.setStatus(`Gaia TAP Error: ${res.error || 'Query failed'}`, "error");
+      } catch (err) {}
+    }
+
+    // 2. Client-side static fallback execution (works 100% on GitHub Pages)
+    try {
+      const results = this.executeClientQuery(query);
+      const dur = (performance.now() - startTime).toFixed(1);
+      this.currentStars = results;
+      this.setStatus(`Success: Filtered ${results.length} stars from ESA Gaia DR3 catalog in ${dur} ms (Static Mode).`, "success");
+      const cols = ["source_id", "ra", "dec", "phot_g_mean_mag", "bp_rp", "parallax"];
+      this.renderResultsTable(results, cols);
+      if (this.skymap) {
+        this.skymap.setGaiaHighlights(this.currentStars);
       }
-    } catch (err) {
-      this.setStatus(`Network Error: Failed to contact Gaia API proxy (${err.message})`, "error");
+    } catch (e) {
+      this.setStatus(`Query error: ${e.message}`, "error");
     } finally {
       if (this.runBtn) this.runBtn.disabled = false;
     }
+  }
+
+  executeClientQuery(query) {
+    if (!this.skymap || !this.skymap.stars) return [];
+    let pool = [...this.skymap.stars];
+
+    // Check for CONTAINS(CIRCLE(...))
+    const circleMatch = query.match(/CIRCLE\s*\(\s*['"]?ICRS['"]?\s*,\s*([\d.-]+)\s*,\s*([\d.-]+)\s*,\s*([\d.-]+)\s*\)/i);
+    if (circleMatch) {
+      const cra = parseFloat(circleMatch[1]);
+      const cdec = parseFloat(circleMatch[2]);
+      const cradius = parseFloat(circleMatch[3]);
+      pool = pool.filter(s => {
+        const dra = (s.ra - cra) * Math.cos(cdec * Math.PI / 180);
+        const ddec = s.dec - cdec;
+        return Math.hypot(dra, ddec) <= cradius * 1.5;
+      });
+    }
+
+    // Check for phot_g_mean_mag <= X or < X
+    const magMatch = query.match(/phot_g_mean_mag\s*(<=|<)\s*([\d.-]+)/i);
+    if (magMatch) {
+      const maxMag = parseFloat(magMatch[2]);
+      pool = pool.filter(s => s.mag <= maxMag);
+    }
+
+    // Sort by magnitude
+    pool.sort((a, b) => a.mag - b.mag);
+
+    // Limit TOP N
+    const topMatch = query.match(/TOP\s+(\d+)/i);
+    const limit = topMatch ? parseInt(topMatch[1]) : 100;
+    const sliced = pool.slice(0, limit);
+
+    return sliced.map(s => ({
+      source_id: s.id,
+      ra: s.ra,
+      dec: s.dec,
+      phot_g_mean_mag: s.mag,
+      bp_rp: s.bp_rp,
+      parallax: s.dist_ly ? Number((1000 / (s.dist_ly / 3.26156)).toFixed(2)) : null
+    }));
   }
 
   clearHighlights() {

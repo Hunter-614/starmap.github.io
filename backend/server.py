@@ -248,16 +248,26 @@ def geocode_location(q: str = Query(..., min_length=2, description="City, addres
         return []
 
 
-# Mount static frontend directory
-STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+# Mount static frontend directory and data directory
+ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
+STATIC_DIR = os.path.join(ROOT_DIR, "static")
+DATA_DIR = os.path.join(ROOT_DIR, "data")
+
 if not os.path.exists(STATIC_DIR):
     os.makedirs(STATIC_DIR, exist_ok=True)
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+if os.path.exists(DATA_DIR):
+    app.mount("/data", StaticFiles(directory=DATA_DIR), name="data")
+
 @app.get("/")
 def serve_index():
-    index_file = os.path.join(STATIC_DIR, "index.html")
-    if os.path.exists(index_file):
-        return FileResponse(index_file)
-    return {"message": "Local Star Map Observatory running. index.html not yet placed in static directory."}
+    root_index = os.path.join(ROOT_DIR, "index.html")
+    if os.path.exists(root_index):
+        return FileResponse(root_index)
+    static_index = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(static_index):
+        return FileResponse(static_index)
+    return {"message": "Local Star Map Observatory running. index.html not found."}
+

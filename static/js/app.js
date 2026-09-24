@@ -155,29 +155,39 @@ document.addEventListener('DOMContentLoaded', () => {
   // ----------------------------------------------------
   async function loadInitialData() {
     try {
-      // Fetch stars
+      const isStaticHost = location.hostname.includes('github.io') || location.protocol === 'file:' || !location.port;
       let stars = [];
-      try {
-        const starResp = await fetch('/api/stars');
-        if (starResp.ok) {
-          stars = await starResp.json();
-        }
-      } catch (e) {
-        // Fallback to static data file
-        const starResp = await fetch('/data/gaia_bright_stars.json');
-        if (starResp.ok) stars = await starResp.json();
+      let constellations = [];
+
+      // If running with local FastAPI server, try API endpoints first
+      if (!isStaticHost) {
+        try {
+          const starResp = await fetch('/api/stars');
+          if (starResp.ok) stars = await starResp.json();
+          const conResp = await fetch('/api/constellations');
+          if (conResp.ok) constellations = await conResp.json();
+        } catch (e) {}
       }
 
-      // Fetch constellations
-      let constellations = [];
-      try {
-        const conResp = await fetch('/api/constellations');
-        if (conResp.ok) {
-          constellations = await conResp.json();
+      // Static fallback / GitHub Pages relative data loading
+      if (!stars.length) {
+        try {
+          const starResp = await fetch('./data/gaia_bright_stars.json');
+          if (starResp.ok) stars = await starResp.json();
+        } catch (e) {
+          const starResp = await fetch('../data/gaia_bright_stars.json');
+          if (starResp.ok) stars = await starResp.json();
         }
-      } catch (e) {
-        const conResp = await fetch('/data/constellations.json');
-        if (conResp.ok) constellations = await conResp.json();
+      }
+
+      if (!constellations.length) {
+        try {
+          const conResp = await fetch('./data/constellations.json');
+          if (conResp.ok) constellations = await conResp.json();
+        } catch (e) {
+          const conResp = await fetch('../data/constellations.json');
+          if (conResp.ok) constellations = await conResp.json();
+        }
       }
 
       skymap.setData({ stars, constellations });
