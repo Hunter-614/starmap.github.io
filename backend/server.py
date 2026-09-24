@@ -261,6 +261,10 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 if os.path.exists(DATA_DIR):
     app.mount("/data", StaticFiles(directory=DATA_DIR), name="data")
 
+SOURCE_IMAGES_DIR = os.path.join(ROOT_DIR, "Source Images")
+if os.path.exists(SOURCE_IMAGES_DIR):
+    app.mount("/Source Images", StaticFiles(directory=SOURCE_IMAGES_DIR), name="source_images")
+
 @app.get("/")
 def serve_index():
     root_index = os.path.join(ROOT_DIR, "index.html")

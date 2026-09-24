@@ -142,8 +142,15 @@ document.addEventListener('DOMContentLoaded', () => {
       skymap.setDate(state.currentTime);
       updateClockDisplay();
       updateTimeSlider();
+      if (state.issTracker) {
+        state.issTracker.renderRadar(state.currentTime.getTime() / 1000);
+        state.issTracker.updateHUD(state.currentTime.getTime() / 1000);
+      }
     } else {
       skymap.render();
+      if (state.issTracker) {
+        state.issTracker.renderRadar();
+      }
     }
 
     requestAnimationFrame(animate);
@@ -618,6 +625,10 @@ document.addEventListener('DOMContentLoaded', () => {
         state.currentTime = d;
         skymap.setDate(state.currentTime);
         updateClockDisplay();
+        if (state.issTracker) {
+          state.issTracker.renderRadar(state.currentTime.getTime() / 1000);
+          state.issTracker.updateHUD(state.currentTime.getTime() / 1000);
+        }
       });
     }
 
@@ -630,6 +641,10 @@ document.addEventListener('DOMContentLoaded', () => {
         state.currentTime = newD;
         skymap.setDate(state.currentTime);
         updateClockDisplay();
+        if (state.issTracker) {
+          state.issTracker.renderRadar(state.currentTime.getTime() / 1000);
+          state.issTracker.updateHUD(state.currentTime.getTime() / 1000);
+        }
       });
     }
 
@@ -639,6 +654,10 @@ document.addEventListener('DOMContentLoaded', () => {
         skymap.setDate(state.currentTime);
         updateClockDisplay();
         updateTimeSlider();
+        if (state.issTracker) {
+          state.issTracker.renderRadar(state.currentTime.getTime() / 1000);
+          state.issTracker.updateHUD(state.currentTime.getTime() / 1000);
+        }
       });
     }
 
@@ -650,6 +669,10 @@ document.addEventListener('DOMContentLoaded', () => {
         skymap.setDate(state.currentTime);
         updateClockDisplay();
         updateTimeSlider();
+        if (state.issTracker) {
+          state.issTracker.renderRadar(state.currentTime.getTime() / 1000);
+          state.issTracker.updateHUD(state.currentTime.getTime() / 1000);
+        }
       });
     }
 
@@ -661,6 +684,10 @@ document.addEventListener('DOMContentLoaded', () => {
         skymap.setDate(state.currentTime);
         updateClockDisplay();
         updateTimeSlider();
+        if (state.issTracker) {
+          state.issTracker.renderRadar(state.currentTime.getTime() / 1000);
+          state.issTracker.updateHUD(state.currentTime.getTime() / 1000);
+        }
       });
     }
 

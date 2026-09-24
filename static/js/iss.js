@@ -15,6 +15,29 @@ class ISSTracker {
     this.currentData = null;
     this.isFetching = false;
     
+    // Load mini ISS satellite image with multi-path fallbacks
+    const issCandidates = [
+      './Source Images/ISS.png',
+      './static/assets/iss.png',
+      './assets/iss.png',
+      '../Source Images/ISS.png',
+      '../static/assets/iss.png'
+    ];
+    let candidateIdx = 0;
+    this.issImage = new Image();
+    this.issImageLoaded = false;
+    this.issImage.onload = () => {
+      this.issImageLoaded = true;
+      this.renderRadar();
+    };
+    this.issImage.onerror = () => {
+      candidateIdx++;
+      if (candidateIdx < issCandidates.length) {
+        this.issImage.src = issCandidates[candidateIdx];
+      }
+    };
+    this.issImage.src = issCandidates[0];
+
     this.initRadarCanvas();
   }
 
@@ -167,10 +190,50 @@ class ISSTracker {
     return bearings[idx];
   }
 
-  updateHUD() {
+  getCurrentPosition(targetTs = null) {
+    if (!this.currentData || !this.currentData.telemetry) return null;
+    const telem = this.currentData.telemetry;
+    const ts = targetTs != null ? targetTs : (Date.now() / 1000);
+    const t0 = telem.timestamp || ts;
+    const dt = ts - t0;
+
+    const periodSec = 5560; // ~92.6 min orbital period
+    const incRad = 51.64 * (Math.PI / 180.0);
+
+    const theta = (((t0 % periodSec) + dt) / periodSec) * 2 * Math.PI;
+    const lat = Math.asin(Math.sin(incRad) * Math.sin(theta)) * (180.0 / Math.PI);
+    let lon = (telem.longitude + (dt / periodSec) * 360.0 * Math.cos(incRad) - (dt / 240.0)) % 360.0;
+    if (lon > 180) lon -= 360;
+    if (lon < -180) lon += 360;
+
+    // Forward step for flight heading vector
+    const dtAhead = 8.0;
+    const thetaAhead = (((t0 % periodSec) + dt + dtAhead) / periodSec) * 2 * Math.PI;
+    const latAhead = Math.asin(Math.sin(incRad) * Math.sin(thetaAhead)) * (180.0 / Math.PI);
+    let lonAhead = (telem.longitude + ((dt + dtAhead) / periodSec) * 360.0 * Math.cos(incRad) - ((dt + dtAhead) / 240.0)) % 360.0;
+    if (lonAhead > 180) lonAhead -= 360;
+    if (lonAhead < -180) lonAhead += 360;
+
+    return {
+      latitude: lat,
+      longitude: lon,
+      altitude_km: telem.altitude_km || 420.0,
+      velocity_kmh: telem.velocity_kmh || 27600.0,
+      timestamp: ts,
+      latAhead,
+      lonAhead
+    };
+  }
+
+  updateHUD(targetTs = null) {
     if (!this.currentData) return;
     const telem = this.currentData.telemetry;
-    const topo = this.currentData.topocentric;
+    const pos = this.getCurrentPosition(targetTs) || telem;
+
+    // Real-time topocentric Alt/Az calculation for observer
+    const obsEcef = Astronomy.geodeticToEcef(this.observerLat, this.observerLon, 0);
+    const satEcef = Astronomy.geodeticToEcef(pos.latitude, pos.longitude, pos.altitude_km);
+    const enu = Astronomy.ecefToEnu(satEcef.x, satEcef.y, satEcef.z, obsEcef.x, obsEcef.y, obsEcef.z, this.observerLat, this.observerLon);
 
     const elAlt = document.getElementById('iss-hud-alt');
     const elAz = document.getElementById('iss-hud-az');
@@ -179,14 +242,14 @@ class ISSTracker {
     const elSpeed = document.getElementById('iss-hud-speed');
     const elStatus = document.getElementById('iss-status-badge');
 
-    if (elAlt) elAlt.textContent = `${topo.elevation_deg.toFixed(1)}°`;
-    if (elAz) elAz.textContent = `${topo.azimuth_deg.toFixed(1)}° (${topo.direction})`;
-    if (elDist) elDist.textContent = `${Math.round(topo.slant_range_km).toLocaleString()} km`;
-    if (elLatLon) elLatLon.textContent = `${telem.latitude.toFixed(2)}°, ${telem.longitude.toFixed(2)}°`;
-    if (elSpeed) elSpeed.textContent = `${Math.round(telem.velocity_kmh).toLocaleString()} km/h`;
+    if (elAlt) elAlt.textContent = `${enu.elevation.toFixed(1)}°`;
+    if (elAz) elAz.textContent = `${enu.azimuth.toFixed(1)}° (${this.bearingToCompass(enu.azimuth)})`;
+    if (elDist) elDist.textContent = `${Math.round(enu.slantRange).toLocaleString()} km`;
+    if (elLatLon) elLatLon.textContent = `${pos.latitude.toFixed(2)}°, ${pos.longitude.toFixed(2)}°`;
+    if (elSpeed) elSpeed.textContent = `${Math.round(pos.velocity_kmh).toLocaleString()} km/h`;
 
     if (elStatus) {
-      if (topo.is_above_horizon) {
+      if (enu.elevation > 0) {
         elStatus.className = "px-2 py-0.5 rounded text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 animate-pulse";
         elStatus.textContent = "● VISIBLE IN SKY";
       } else {
@@ -212,7 +275,7 @@ class ISSTracker {
     }
   }
 
-  renderRadar() {
+  renderRadar(targetTs = null) {
     if (!this.radarCtx || !this.currentData) return;
     const ctx = this.radarCtx;
     const w = this.radarWidth;
@@ -300,27 +363,80 @@ class ISSTracker {
     ctx.strokeStyle = "#38bdf8";
     ctx.strokeRect(obsX - 5, obsY - 5, 10, 10);
 
-    // Draw ISS Sub-satellite point
-    const telem = this.currentData.telemetry;
-    const satX = w * (telem.longitude + 180) / 360;
-    const satY = h * (90 - telem.latitude) / 180;
+    // Current ISS Sub-satellite point (interpolated/propagated in sync with live time)
+    const pos = this.getCurrentPosition(targetTs);
+    if (!pos) return;
 
-    // Satellite beacon
-    ctx.fillStyle = "#facc15";
-    ctx.beginPath();
-    ctx.arc(satX, satY, 4, 0, 2 * Math.PI);
-    ctx.fill();
+    const satX = w * (pos.longitude + 180) / 360;
+    const satY = h * (90 - pos.latitude) / 180;
 
-    ctx.strokeStyle = "#fef08a";
-    ctx.lineWidth = 1.5;
+    // Radar ping pulse animation
+    const nowSec = targetTs != null ? targetTs : (Date.now() / 1000);
+    const pulsePhase = (nowSec % 2.0) / 2.0;
+    const pulseR = 8 + pulsePhase * 18;
+    const pulseAlpha = Math.max(0, 1.0 - pulsePhase);
+
+    ctx.save();
+    ctx.strokeStyle = `rgba(250, 204, 21, ${pulseAlpha * 0.8})`;
+    ctx.lineWidth = 1.4;
     ctx.beginPath();
-    ctx.arc(satX, satY, 8, 0, 2 * Math.PI);
+    ctx.arc(satX, satY, pulseR, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.restore();
+
+    // Target reticle
+    ctx.strokeStyle = "rgba(254, 240, 138, 0.6)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(satX, satY, 11, 0, 2 * Math.PI);
     ctx.stroke();
 
-    // Label
+    // Direction angle along ground track
+    const satNextX = w * (pos.lonAhead + 180) / 360;
+    const satNextY = h * (90 - pos.latAhead) / 180;
+    let trackAngle = 0;
+    if (Math.abs(satNextX - satX) < w * 0.2) {
+      trackAngle = Math.atan2(satNextY - satY, satNextX - satX);
+    }
+
+    // Mini ISS Image rendering
+    const miniSize = 26;
+    if (this.issImageLoaded && this.issImage.naturalWidth > 0) {
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.translate(satX, satY);
+      // Align mini ISS orientation smoothly along flight vector
+      ctx.rotate(trackAngle - Math.PI / 4);
+      ctx.shadowColor = "#facc15";
+      ctx.shadowBlur = 8;
+      ctx.drawImage(this.issImage, -miniSize / 2, -miniSize / 2, miniSize, miniSize);
+      ctx.restore();
+    } else {
+      // Vector fallback satellite beacon
+      ctx.fillStyle = "#facc15";
+      ctx.beginPath();
+      ctx.arc(satX, satY, 4, 0, 2 * Math.PI);
+      ctx.fill();
+
+      ctx.strokeStyle = "#fef08a";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(satX, satY, 8, 0, 2 * Math.PI);
+      ctx.stroke();
+    }
+
+    // Mini ISS Label badge
+    ctx.save();
     ctx.fillStyle = "#fef08a";
     ctx.font = "bold 9px monospace";
-    ctx.fillText("ISS", satX + 7, satY - 5);
+    ctx.shadowColor = "rgba(0,0,0,0.85)";
+    ctx.shadowBlur = 4;
+    ctx.fillText("ISS", satX + 14, satY - 4);
+    ctx.font = "8px monospace";
+    ctx.fillStyle = "rgba(254, 240, 138, 0.85)";
+    ctx.fillText(`${pos.latitude.toFixed(1)}°, ${pos.longitude.toFixed(1)}°`, satX + 14, satY + 6);
+    ctx.restore();
   }
 
   drawMinimalContinents(ctx, w, h) {

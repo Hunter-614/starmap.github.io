@@ -32,12 +32,16 @@ Designed for **IARC 425: Module B (Star Project)**.
 
 5. **Live ISS (International Space Station) Tracking & Path**:
    - Real-time satellite telemetry (latitude, longitude, altitude ~420 km, velocity ~27,600 km/h, sunlight/eclipse illumination).
+   - **Mini ISS Spacecraft Visuals (`Source Images/ISS.png`)**:
+     - Miniature, high-resolution rendering of the ISS spacecraft with transparent background, solar arrays, and module structures.
+     - **Celestial Sky Dome Projection**: When ISS is above the horizon ($h > 0^\circ$), renders the mini ISS spacecraft oriented along its orbital flight vector with animated pulsing beacon rings and live altitude/distance badges.
+     - **2D World Ground Track Radar**: Renders the mini ISS spacecraft gliding across the world map in real-time sync, oriented along its ground track bearing with expanding radar ping rings.
+     - **Below-Horizon Radar Approach Indicator**: Displays a mini ISS thumbnail on the planisphere azimuth rim indicating the satellite's approach bearing before it rises.
+     - **Dynamic Real-Time & Time-Warp Orbit Propagation**: Satellite position updates smoothly at 60 FPS in real-time and during accelerated time playback (60x to 7200x) and time scrub.
    - **WGS84 ECEF to ENU Topocentric Transform**:
      - Converts geodetic satellite coordinates into observer-centric **Altitude (Elevation)** and **Azimuth** angles.
-     - When ISS is above the horizon ($h > 0^\circ$), renders a glowing satellite marker with velocity vector and blinking beacon.
-     - When ISS is below horizon, displays a radar vector on the horizon rim pointing toward its approach direction.
    - **Orbital Trail**: Plots past 45-minute and future 45-minute trajectory across the local sky dome.
-   - **2D World Ground Track Radar**: Miniature world map projection showing the sub-satellite point, ground track, and observer's horizon footprint circle.
+   - **Ground Track Radar**: Miniature world map projection showing the sub-satellite point, ground track, and observer's horizon footprint circle.
 6. **Astronomer's Toolkit**:
    - **Global Location Search & Geocoding**: Real-time autocomplete search across 150+ major cities and world-class astronomical observatories (Mauna Kea, Paranal, La Palma, Greenwich, Kitt Peak), plus live OpenStreetMap Nominatim geocoding to search any town, city, or address on Earth.
    - **Time Travel**: Scrub through the 24 hours of the day, accelerated playback (1x, 60x, 300x, 1800x, 7200x), jump to Sunset, Midnight, Sunrise, or Real-time.

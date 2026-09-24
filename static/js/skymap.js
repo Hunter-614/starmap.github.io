@@ -53,6 +53,29 @@ class SkyMap {
     this.selectedObject = null;
     this.onSelectCallback = null;
     this.animTime = 0;
+
+    // Load mini ISS satellite image with multi-path fallbacks
+    const issCandidates = [
+      './Source Images/ISS.png',
+      './static/assets/iss.png',
+      './assets/iss.png',
+      '../Source Images/ISS.png',
+      '../static/assets/iss.png'
+    ];
+    let candidateIdx = 0;
+    this.issImage = new Image();
+    this.issImageLoaded = false;
+    this.issImage.onload = () => {
+      this.issImageLoaded = true;
+      this.render();
+    };
+    this.issImage.onerror = () => {
+      candidateIdx++;
+      if (candidateIdx < issCandidates.length) {
+        this.issImage.src = issCandidates[candidateIdx];
+      }
+    };
+    this.issImage.src = issCandidates[0];
     
     this.initEvents();
     this.resize();
@@ -177,13 +200,41 @@ class SkyMap {
     });
 
     if (this.iss && this.iss.telemetry) {
-      const sat = this.iss.telemetry;
+      const telem = this.iss.telemetry;
+      const ts = this.currentDate ? (this.currentDate.getTime() / 1000) : (Date.now() / 1000);
+      const t0 = telem.timestamp || ts;
+      const dt = ts - t0;
+
+      const periodSec = 5560; // ~92.6 min orbital period
+      const incRad = 51.64 * (Math.PI / 180.0);
+
+      const theta = (((t0 % periodSec) + dt) / periodSec) * 2 * Math.PI;
+      const lat = Math.asin(Math.sin(incRad) * Math.sin(theta)) * (180.0 / Math.PI);
+      let lon = (telem.longitude + (dt / periodSec) * 360.0 * Math.cos(incRad) - (dt / 240.0)) % 360.0;
+      if (lon > 180) lon -= 360;
+      if (lon < -180) lon += 360;
+
       const obsEcef = Astronomy.geodeticToEcef(this.lat, this.lon, 0);
-      const satEcef = Astronomy.geodeticToEcef(sat.latitude, sat.longitude, sat.altitude_km);
+      const satEcef = Astronomy.geodeticToEcef(lat, lon, telem.altitude_km || 420.0);
       const enu = Astronomy.ecefToEnu(satEcef.x, satEcef.y, satEcef.z, obsEcef.x, obsEcef.y, obsEcef.z, this.lat, this.lon);
       this.iss.currentAlt = enu.elevation;
       this.iss.currentAz = enu.azimuth;
       this.iss.rangeKm = enu.slantRange;
+      this.iss.subLat = lat;
+      this.iss.subLon = lon;
+
+      // Also compute a forward step (8 seconds ahead) to compute sky projection heading
+      const dtAhead = 8.0;
+      const thetaAhead = (((t0 % periodSec) + dt + dtAhead) / periodSec) * 2 * Math.PI;
+      const latAhead = Math.asin(Math.sin(incRad) * Math.sin(thetaAhead)) * (180.0 / Math.PI);
+      let lonAhead = (telem.longitude + ((dt + dtAhead) / periodSec) * 360.0 * Math.cos(incRad) - ((dt + dtAhead) / 240.0)) % 360.0;
+      if (lonAhead > 180) lonAhead -= 360;
+      if (lonAhead < -180) lonAhead += 360;
+
+      const satEcefAhead = Astronomy.geodeticToEcef(latAhead, lonAhead, telem.altitude_km || 420.0);
+      const enuAhead = Astronomy.ecefToEnu(satEcefAhead.x, satEcefAhead.y, satEcefAhead.z, obsEcef.x, obsEcef.y, obsEcef.z, this.lat, this.lon);
+      this.iss.nextAlt = enuAhead.elevation;
+      this.iss.nextAz = enuAhead.azimuth;
     }
   }
 
@@ -645,35 +696,84 @@ class SkyMap {
     const pt = this.project(currentAz, currentAlt);
 
     if (pt && pt.visible) {
-      // Above horizon - Full glowing satellite
-      const pulse = 1.0 + 0.3 * Math.sin(this.animTime * 6.0);
-      const satRadius = 7 * pulse;
+      // 1. Calculate flight direction vector on sky projection
+      let angle = 0;
+      let hasAngle = false;
+      if (iss.nextAz != null && iss.nextAlt != null) {
+        const ptNext = this.project(iss.nextAz, iss.nextAlt);
+        if (ptNext) {
+          angle = Math.atan2(ptNext.y - pt.y, ptNext.x - pt.x);
+          hasAngle = true;
+        }
+      }
 
-      // Pulsing Beacon halo
-      ctx.strokeStyle = this.options.nightVision ? "#ef4444" : "#eab308";
-      ctx.lineWidth = 1.8;
+      // 2. Pulsing Beacon Halo & Reticle
+      const pulse = 1.0 + 0.25 * Math.sin(this.animTime * 5.0);
+      const beaconRadius = 15 * pulse;
+
+      ctx.save();
+      ctx.strokeStyle = this.options.nightVision ? "rgba(239, 68, 68, 0.75)" : "rgba(250, 204, 21, 0.75)";
+      ctx.lineWidth = 1.6;
       ctx.beginPath();
-      ctx.arc(pt.x, pt.y, satRadius * 1.8, 0, 2 * Math.PI);
+      ctx.arc(pt.x, pt.y, beaconRadius, 0, 2 * Math.PI);
       ctx.stroke();
 
-      // Satellite core marker (solar array cross shape)
-      ctx.fillStyle = this.options.nightVision ? "#ff7777" : "#fef08a";
-      ctx.fillRect(pt.x - 7, pt.y - 1.5, 14, 3); // Horizontal solar wings
-      ctx.fillRect(pt.x - 2, pt.y - 5, 4, 10);  // Central habitat module
+      // Targeting reticle corners
+      ctx.strokeStyle = this.options.nightVision ? "#f87171" : "#facc15";
+      ctx.lineWidth = 1.2;
+      const tick = 4;
+      const rReticle = 16;
+      [-1, 1].forEach(sx => {
+        [-1, 1].forEach(sy => {
+          ctx.beginPath();
+          ctx.moveTo(pt.x + sx * rReticle, pt.y + sy * (rReticle - tick));
+          ctx.lineTo(pt.x + sx * rReticle, pt.y + sy * rReticle);
+          ctx.lineTo(pt.x + sx * (rReticle - tick), pt.y + sy * rReticle);
+          ctx.stroke();
+        });
+      });
+      ctx.restore();
 
-      // Label badge
+      // 3. Mini ISS Image rendering
+      const issSize = 34;
+      if (this.issImageLoaded && this.issImage.naturalWidth > 0) {
+        ctx.save();
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.translate(pt.x, pt.y);
+        if (hasAngle) {
+          // Align with flight trajectory direction (-45 deg to align illustration diagonal)
+          ctx.rotate(angle - Math.PI / 4);
+        }
+        // Glowing aura shadow
+        ctx.shadowColor = this.options.nightVision ? "rgba(239, 68, 68, 0.9)" : "rgba(250, 204, 21, 0.85)";
+        ctx.shadowBlur = 10;
+        ctx.drawImage(this.issImage, -issSize / 2, -issSize / 2, issSize, issSize);
+        ctx.restore();
+      } else {
+        // Fallback satellite core marker (solar array cross shape)
+        ctx.fillStyle = this.options.nightVision ? "#ff7777" : "#fef08a";
+        ctx.fillRect(pt.x - 7, pt.y - 1.5, 14, 3); // Horizontal solar wings
+        ctx.fillRect(pt.x - 2, pt.y - 5, 4, 10);  // Central habitat module
+      }
+
+      // 4. Label badge and telemetry
+      ctx.save();
       ctx.fillStyle = this.options.nightVision ? "#ffaaaa" : "#fef08a";
       ctx.font = "bold 11px monospace";
+      ctx.shadowColor = "rgba(0, 0, 0, 0.9)";
+      ctx.shadowBlur = 4;
       ctx.textAlign = "left";
-      ctx.fillText("🛸 ISS (LIVE)", pt.x + 12, pt.y - 2);
+      ctx.fillText("🛸 ISS (LIVE)", pt.x + 20, pt.y - 4);
 
-      ctx.fillStyle = "rgba(254, 240, 138, 0.85)";
+      ctx.fillStyle = this.options.nightVision ? "rgba(254, 202, 202, 0.9)" : "rgba(254, 240, 138, 0.9)";
       ctx.font = "9px monospace";
       const altStr = `${currentAlt.toFixed(1)}°`;
-      const distStr = `${Math.round(iss.rangeKm || iss.topocentric.slant_range_km)} km`;
-      ctx.fillText(`Alt ${altStr} | ${distStr}`, pt.x + 12, pt.y + 11);
+      const distStr = `${Math.round(iss.rangeKm || (iss.topocentric ? iss.topocentric.slant_range_km : 420))} km`;
+      ctx.fillText(`Alt ${altStr} • ${distStr}`, pt.x + 20, pt.y + 9);
+      ctx.restore();
     } else {
-      // Below horizon - Draw radar approach indicator arrow on the horizon rim
+      // Below horizon - Draw radar approach indicator on horizon rim
       const cx = this.width / 2 + this.panX;
       const cy = this.height / 2 + this.panY;
       const radius = Math.min(this.width, this.height) * 0.44 * this.zoom;
@@ -684,14 +784,24 @@ class SkyMap {
         const arrowY = cy + (radius - 12) * Math.sin(theta);
 
         ctx.save();
-        ctx.fillStyle = this.options.nightVision ? "rgba(239, 68, 68, 0.7)" : "rgba(234, 179, 8, 0.8)";
+        if (this.issImageLoaded && this.issImage.naturalWidth > 0) {
+          ctx.save();
+          ctx.translate(arrowX, arrowY);
+          ctx.shadowColor = this.options.nightVision ? "rgba(239,68,68,0.7)" : "rgba(234,179,8,0.7)";
+          ctx.shadowBlur = 6;
+          ctx.drawImage(this.issImage, -9, -9, 18, 18);
+          ctx.restore();
+        } else {
+          ctx.fillStyle = this.options.nightVision ? "rgba(239, 68, 68, 0.7)" : "rgba(234, 179, 8, 0.8)";
+          ctx.beginPath();
+          ctx.arc(arrowX, arrowY + 6, 3.5, 0, 2 * Math.PI);
+          ctx.fill();
+        }
+
+        ctx.fillStyle = this.options.nightVision ? "rgba(239, 68, 68, 0.85)" : "rgba(234, 179, 8, 0.9)";
         ctx.font = "bold 9px monospace";
         ctx.textAlign = "center";
-        ctx.fillText(`ISS (${currentAlt.toFixed(0)}°)`, arrowX, arrowY - 4);
-
-        ctx.beginPath();
-        ctx.arc(arrowX, arrowY + 6, 3.5, 0, 2 * Math.PI);
-        ctx.fill();
+        ctx.fillText(`ISS (${currentAlt.toFixed(0)}°)`, arrowX, arrowY - 11);
         ctx.restore();
       }
     }
@@ -845,6 +955,28 @@ class SkyMap {
         }
       }
     });
+
+    // Check ISS Satellite
+    if (this.iss) {
+      const currentAlt = this.iss.currentAlt != null ? this.iss.currentAlt : (this.iss.topocentric ? this.iss.topocentric.elevation_deg : -90);
+      const currentAz = this.iss.currentAz != null ? this.iss.currentAz : (this.iss.topocentric ? this.iss.topocentric.azimuth_deg : 0);
+      const pt = this.project(currentAz, currentAlt);
+      if (pt && pt.visible) {
+        const d = Math.hypot(mouseX - pt.x, mouseY - pt.y);
+        if (d < 22 && d < minDist) {
+          closest = {
+            type: "satellite",
+            name: "International Space Station (ISS)",
+            data: this.iss,
+            az: currentAz,
+            alt: currentAlt,
+            x: pt.x,
+            y: pt.y
+          };
+          minDist = d;
+        }
+      }
+    }
 
     if (closest !== this.hoveredObject) {
       this.hoveredObject = closest;
